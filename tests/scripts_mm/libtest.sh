@@ -1,13 +1,17 @@
 tool_path=../../tools
 ERR=255
 
+# 内存映射模式 XDMA 回归脚本使用的公共辅助函数。
+# 这些函数负责检查前置条件、将 PCI BDF 映射到 xdma ID、
+# 读取 XDMA 配置寄存器、统计通道数量，并执行基础冒烟测试。
+
 ############################
 #
-# utility functions
+# 工具函数
 #
 ############################
 
-# Make sure only root can run the script
+# 确保只有 root 用户可以运行该脚本。
 function check_if_root() {
 	if [[ $EUID -ne 0 ]]; then
 		echo "This script must be run as root" 1>&2
@@ -46,12 +50,15 @@ function check_dma_dir() {
 
 # check_driver_loaded <bdf>
 function check_driver_loaded() {
+# 输出指定 PCI BDF 在 lspci 中匹配到 "driver xdma" 的数量。
 	local bdf=$1
 	lspci -s $bdf -v | grep driver | grep xdma | wc -l
 }
 
 # bdf_to_xdmaid <bdf>
 function bdf_to_xdmaid() {
+# 通过设备 sysfs 目录下的 xdma 子目录，将 PCI BDF
+# 例如 0000:01:00.0 转换为驱动使用的 xdmaN 前缀。
 	cd /sys/bus/pci/devices/$1/
 	if [ -d "xdma" ]; then
 		cd xdma/
@@ -61,6 +68,8 @@ function bdf_to_xdmaid() {
 
 # cfg_reg_read <xid> <reg addr>
 function cfg_reg_read() {
+# 使用 reg_rw 读取 XDMA control BAR 寄存器，并返回去掉
+# "Read ...: 0x" 前缀后的十六进制值。
 	local v=`$tool_path/reg_rw /dev/$1_control $2 w | grep "Read.*:" | sed 's/Read.*: 0x\([a-z0-9]*\)/\1/'`
 	if [ -z "$v" ]; then
 		return $ERR
@@ -72,12 +81,14 @@ function cfg_reg_read() {
 
 # cfg_reg_write <xid> <reg addr> <reg value>
 function cfg_reg_write() {
+# 使用 reg_rw 写入 XDMA control BAR 寄存器。
 	local v=`$tool_path/reg_rw /dev/$1_control $2 w $3`
 	return $? 
 }
 
 # get_streaming_enabled <xid>
 function get_streaming_enabled() {
+# 第一个 H2C 通道声明流式模式时返回 1，否则返回 0。
 	local v=`cfg_reg_read $1 0`
 	local rc=$?
 	if [ $rc -ne 0 ]; then
@@ -102,6 +113,8 @@ function get_streaming_enabled() {
 
 # get_h2c_channel_count <xid>
 function get_h2c_channel_count() {
+# 扫描四个标准 H2C 控制寄存器偏移，并检查 XDMA 通道 ID 是否为
+# 0x1fc，以统计有效 H2C 通道数量。
 	local cnt=0
 
 	for ((i=0; i<=3; i++)); do
@@ -121,6 +134,8 @@ function get_h2c_channel_count() {
 
 # get_c2h_channel_count <xid>
 function get_c2h_channel_count() {
+# 扫描四个标准 C2H 控制寄存器偏移，并检查 XDMA 通道 ID 是否为
+# 0x1fc，以统计有效 C2H 通道数量。
 	local cnt=0
 
 	for ((i=0; i<=3; i++)); do
@@ -140,13 +155,14 @@ function get_c2h_channel_count() {
 
 #############################################################################
 #
-# test cases
+# 测试用例
 #
 #############################################################################
 
-# xdma config bar access
+# xdma configuration BAR 访问测试。
 # TC_cfg_reg_rw <xid>
 function TC_cfg_reg_rw() {
+# 基础 configuration BAR 读写冒烟测试。
 	local reg=0x301c
 	local val=0
 
@@ -164,6 +180,8 @@ function TC_cfg_reg_rw() {
 
 # TC_dma_chrdev_open_close <xid> <h2c count> <c2h count>
 function TC_dma_chrdev_open_close() {
+# 使用 test_chrdev 辅助工具打开每个 DMA 字符设备。
+# 如果这里失败，通常表示驱动没有为对应通道创建可用设备节点。
 	local xid=$1
 	local h2c_count=$2
 	local c2h_count=$3

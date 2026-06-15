@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# 对指定 H2C/C2H 通道组合扫描 DMA 传输大小。
+# 脚本可选创建随机测试数据，对每个大小调用 io.sh，
+# 并在第一次传输失败或数据比较失败时停止。
+
 delay=5
 
 if [ $# -lt 9 ]; then
@@ -41,6 +45,8 @@ fi
 rm -rf ${tmpdir}/*
 
 if [ "$data_check" -ne 0 ]; then
+# 创建足够覆盖最大请求传输大小的源数据文件。
+# 该文件保存在临时目录中，并在不同大小步骤之间复用。
 	cnt=$(($io_max / 1024))
 	if [ "$cnt" -eq 0 ]; then
 		cnt=1
@@ -62,6 +68,8 @@ date
 
 sz=$io_min
 while [ "$sz" -le "$io_max" ]; do
+# 执行单个大小的 DMA 测试，然后将传输大小倍增直到 io_max。
+# 当 io_max 不是 2 的幂时，最后一次迭代会被限制为 io_max。
 	./io.sh $dmesg $data_check $sz $addr $off $xid $h2cno $c2hno $tmpdir \
 	       	$datafile
 	if [ "$?" -ne "0" ]; then

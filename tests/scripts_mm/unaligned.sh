@@ -1,26 +1,30 @@
 #!/bin/sh
 
+# 测试非对齐 DMA 大小和偏移。
+# 该脚本覆盖 1 KB、4 KB、8 KB 附近的边界大小，
+# 以及 2 KB/4 KB 边界附近的偏移。
+
 ##########################
 #
-# preset test parameters:
+# 预设测试参数：
 #
 ##########################
-# dma io size
+# DMA I/O 大小。
 io_list="1 10 127 128 1021 1022 1023 1024 4095 4096 4097 4098 4099 8189 8190 8191 8192"
 io_max=8192
 
-# offset
+# 文件偏移。
 offset_list="1 2 3 4 2045 2046 2047 2048 2049 4091 4092 4093 4094 4095"
 
-# starting address
+# 起始地址。
 address=0
 
-# delay(sleep) before moving on to the next channel, if applicable
+# 如适用，进入下一通道前的等待时间。
 delay=2
 
 ##########################
 #
-# main
+# 主流程
 #
 ##########################
 if [ $# -lt 5 ]; then
@@ -51,7 +55,8 @@ if [ ! -d "$tmpdir" ]; then
 fi
 rm -rf $tmpdir/*
 
-# generate data file, minimum 64MB
+# 为可选的数据一致性校验生成随机数据文件。
+# 虽然列出的 I/O 大小较小，但 dd 块大小会让文件至少为 64 MB。
 cnt=$(($io_max / 1024))
 if [ "$cnt" -eq "0" ]; then
 	cnt=1
@@ -75,6 +80,8 @@ echo "$0: $xid $h2cno:$c2hno, addr $address ..." > /dev/kmsg
 
 for io in $io_list; do
 	for offset in $offset_list; do
+# 通过 io.sh 测试每个大小和偏移组合。启用 data_check 时，
+# io.sh 会写入、读回临时文件并比较二者。
 		./io.sh $dmesg $data_check $io $address $offset $xid \
 			$h2cno $c2hno $tmpdir $datafile
 		if [ "$?" -ne "0" ]; then

@@ -1,4 +1,9 @@
 #!/bin/bash
+
+# 内存映射模式 XDMA 数据通路测试。
+# 脚本通过已启用的 H2C 通道写入已知数据，再通过 C2H 通道读回，
+# 并比较读回字节是否一致。
+
 display_help() {
 	echo "$0 <xdma id> <io size> <io count> <h2c #> <c2h #>"
 	echo -e "xdma id:\txdma[N] "
@@ -24,13 +29,14 @@ c2hChannels=$5
 tool_path=../tools
 
 testError=0
-# Run the PCIe DMA memory mapped write read test
+# 运行 PCIe DMA 内存映射写入/读回测试。
 echo "Info: Running PCIe DMA memory mapped write read test"
 echo -e "\ttransfer size:  $transferSz, count: $transferCount"
 
-# Write to all enabled h2cChannels in parallel
+# 写入四段连续地址空间。传输会分配到已启用的 H2C 通道，
+# 用于并行覆盖多通道 DMA 引擎。
 if [ $h2cChannels -gt 0 ]; then
-	# Loop over four blocks of size $transferSz and write to them
+	# 遍历四个大小为 $transferSz 的块并写入数据。
 	for ((i=0; i<=3; i++)); do
 		addrOffset=$(($transferSz * $i))
 		curChannel=$(($i % $h2cChannels))
@@ -39,8 +45,7 @@ if [ $h2cChannels -gt 0 ]; then
 		$tool_path/dma_to_device -d /dev/${xid}_h2c_${curChannel} \
 		       	-f data/datafile${i}_4K.bin -s $transferSz \
 			-a $addrOffset -c $transferCount &
-		# If all channels have active transactions we must wait for
-	        # them to complete
+		# 如果所有通道都有正在执行的事务，则等待它们完成。
 		if [ $(($curChannel+1)) -eq $h2cChannels ]; then
 			echo "Info: Wait for current transactions to complete."
 			wait
@@ -48,12 +53,13 @@ if [ $h2cChannels -gt 0 ]; then
 	done
 fi
 
-# Wait for the last transaction to complete.
+# 等待最后一批事务完成。
 wait
 
-# Read from all enabled c2hChannels in parallel
+# 通过 C2H 通道读回相同的四段地址空间。每次运行都会重新生成输出文件，
+# 避免和旧数据比较。
 if [ $c2hChannels -gt 0 ]; then
-	# Loop over four blocks of size $transferSz and read from them
+	# 遍历四个大小为 $transferSz 的块并读回数据。
 	for ((i=0; i<=3; i++)); do
 		addrOffset=$(($transferSz * $i))
 		curChannel=$(($i % $c2hChannels))
@@ -64,8 +70,7 @@ if [ $c2hChannels -gt 0 ]; then
 		$tool_path/dma_from_device -d /dev/${xid}_c2h_${curChannel} \
 		       	-f data/output_datafile${i}_4K.bin -s $transferSz \
 		       	-a $addrOffset -c $transferCount &
-		# If all channels have active transactions we must wait for
-	        # them to complete
+		# 如果所有通道都有正在执行的事务，则等待它们完成。
 		if [ $(($curChannel+1)) -eq $c2hChannels ]; then
 			echo "Info: Wait for current transactions to complete."
 			wait
@@ -73,10 +78,11 @@ if [ $c2hChannels -gt 0 ]; then
 	done
 fi
 
-# Wait for the last transaction to complete.
+# 等待最后一批事务完成。
 wait
 
-# Verify that the written data matches the read data if possible.
+# 只有 H2C 和 C2H 都存在时才做数据一致性校验。
+# 只有单方向通道时仍可发起传输，但无法完成写入后读回比较。
 if [ $h2cChannels -eq 0 ]; then
 	echo "Info: No data verification was performed because no h2c " \
 		"channels are enabled."
@@ -104,12 +110,12 @@ else
 	done
 fi
 
-# Exit with an error code if an error was found during testing
+# 如果测试过程中发现错误，则以错误码退出。
 if [ $testError -eq 1 ]; then
 	echo "Error: Test completed with Errors."
 	exit 1
 fi
 
-# Report all tests passed and exit
+# 报告所有测试通过并退出。
 echo "Info: All PCIe DMA memory mapped tests passed."
 exit 0

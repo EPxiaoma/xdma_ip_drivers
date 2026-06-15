@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# 在指定 H2C/C2H 通道上执行一次固定大小的 XDMA 传输。
+# 通道号 >= 4 表示禁用该方向，因此可用于仅 H2C、仅 C2H
+# 或成对流量。启用数据校验时，脚本通过 H2C 写入源文件，
+# 读取 C2H 输出，并比较两个生成文件。
+
 tool_path=../../tools
 logdir=/tmp
 
@@ -50,6 +55,8 @@ fi
 
 h2c_cmd="$tool_path/dma_to_device -d /dev/${xid}_h2c_${h2cno}"
 c2h_cmd="$tool_path/dma_from_device -d /dev/${xid}_c2h_${c2hno}"
+# 仅在地址和源文件偏移非 0 时添加对应参数，
+# 使生成的命令行尽量接近默认工具调用。
 if [ "$address" -ne "0" ]; then
 	h2c_cmd="$h2c_cmd -a $address"
 	c2h_cmd="$c2h_cmd -a $address"
@@ -61,6 +68,8 @@ if [ "$offset" -ne "0" ]; then
 fi
 
 if [ "$data_check" -ne 0 ]; then
+# 为本次运行构造临时文件名。dma_to_device 会把实际提交的字节写入
+# h2c_fname，dma_from_device 会把读回字节保存到 c2h_fname。
 	if [ -z "$datafile" ]; then
 		echo "no datafile specified"
 		exit 2
@@ -80,6 +89,7 @@ if [ "$data_check" -ne 0 ]; then
 fi
 
 if [ "$h2cno" -lt 4 ]; then
+# 选择了有效 H2C 通道时运行 H2C 流量。
 	if [ "$dmesg" -ne "0" ]; then
 		echo "$h2c_cmd -s $sz -c 1" > /dev/kmsg
 	fi
@@ -96,6 +106,7 @@ if [ "$h2cno" -lt 4 ]; then
 fi	
 
 if [ "$c2hno" -lt 4 ]; then
+# 选择了有效 C2H 通道时运行 C2H 流量。
 	if [ "$dmesg" -ne "0" ]; then
 		echo "$c2h_cmd -s $sz -c 1 ..." > /dev/kmsg
 	fi
@@ -112,13 +123,15 @@ if [ "$c2hno" -lt 4 ]; then
 fi	
 
 if [ "$data_check" -eq 0 ]; then
-	# no data integrity check needs to be done
+	# 不需要执行数据一致性校验。
 	exit 0
 fi
 
 #md5sum $c2h_fname
 #md5sum $h2c_fname
 diff -q $c2h_fname $h2c_fname > /dev/null
+# 数据一致性校验成功后删除临时比较文件，
+# 避免大小和偏移扫描过程中临时目录持续增长。
 if [ "$?" -eq "1" ]; then
 	echo -e "\t$xid $h2cno:$c2hno: io $sz, addr $address, off $offset," \
 		"data integrity FAILED!."

@@ -1,6 +1,10 @@
 #!/bin/bash
 # set -x
 
+# 按指定中断模式加载 xdma 内核模块。
+# 脚本会先移除已加载的 xdma 模块，再插入 ../xdma/xdma.ko，
+# 最后确认 xdma 字符设备已经注册。
+
 display_help() {
         echo "$0 [interrupt mode]"
         echo "interrupt mode: optional"
@@ -20,13 +24,13 @@ interrupt_selection=$1
 echo "interrupt_selection $interrupt_selection."
 device_id=903f
 
-# Make sure only root can run our script
+# 确保只有 root 用户可以运行该脚本。
 if [[ $EUID -ne 0 ]]; then
 	echo "This script must be run as root" 1>&2
 	exit 1
 fi
 
-# Remove the existing xdma kernel module
+# 移除已有 xdma 模块，确保新的中断或轮询模式参数生效。
 lsmod | grep xdma
 if [ $? -eq 0 ]; then
 	rmmod xdma
@@ -36,9 +40,9 @@ if [ $? -eq 0 ]; then
 	fi
 fi
 
-# Use the following command to Load the driver in the default 
-# or interrupt drive mode. This will allow the driver to use 
-# interrupts to signal when DMA transfers are completed.
+# 根据请求的中断模式选择模块参数。
+# 如果未显式指定模式，则通过 PCI capability 探测，优先使用 MSI-X，
+# 其次 MSI，最后使用 legacy 中断模式。
 echo -n "Loading driver..."
 case $interrupt_selection in
 	"0")
@@ -83,15 +87,15 @@ if [ ! $ret == 0 ]; then
 	exit 1
 fi
 
-# Check to see if the xdma devices were recognized
+# 确认模块已经注册 xdma 字符设备。
 echo ""
 cat /proc/devices | grep xdma > /dev/null
 returnVal=$?
 if [ $returnVal == 0 ]; then
-	# Installed devices were recognized.
+	# 已识别安装后的设备。
 	echo "The Kernel module installed correctly and the xmda devices were recognized."
 else
-	# No devices were installed.
+	# 未识别到已安装设备。
 	echo "Error: The Kernel module installed correctly, but no devices were recognized."
 	echo " FAILED"
 	exit 1
